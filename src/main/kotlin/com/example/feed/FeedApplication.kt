@@ -1,31 +1,23 @@
 package com.example.feed
 
 import com.rometools.rome.feed.synd.SyndEntry
-import org.apache.commons.logging.LogFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
-import org.springframework.context.ApplicationContext
-import org.springframework.context.ApplicationContextAware
 import org.springframework.context.support.beans
 import org.springframework.core.io.UrlResource
 import org.springframework.data.redis.core.StringRedisTemplate
-import org.springframework.integration.context.IntegrationContextUtils
 import org.springframework.integration.dsl.IntegrationFlows
 import org.springframework.integration.dsl.context.IntegrationFlowContext
-import org.springframework.integration.dsl.context.IntegrationFlowRegistration
 import org.springframework.integration.feed.dsl.Feed
 import org.springframework.integration.handler.GenericHandler
 import org.springframework.integration.metadata.MetadataStore
+import org.springframework.stereotype.Component
+import org.springframework.util.ReflectionUtils
 import pinboard.PinboardClient
-import java.time.Duration
-import java.time.Instant
-import java.time.ZoneId
 import java.util.*
-import java.util.concurrent.*
-import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.Executors
 
 
 // add org.springframework.boot:spring-boot-starter-integration and
@@ -33,18 +25,7 @@ import java.util.concurrent.atomic.AtomicReference
 @SpringBootApplication
 class FeedApplication
 
-fun destroyNewCloudFoundryPostsRunner(pc: PinboardClient) =
-		ApplicationRunner {
-			val posts = pc.getAllPosts(tag = arrayOf("cloudfoundry", "twis"))
-					.filter { !it.tags.contains("processed") }
-					.filter { (it.href ?: "").toLowerCase().contains("cloudfoundry.org") }
-			println("there are ${posts.size} elements.")
-			posts.forEach {
-				println("${it.href} ${it.tags.joinToString(" : ")}")
-				pc.deletePost(it.href!!)
-			}
-		}
-
+@Deprecated("this shouldn't be used, just yet.")
 class RedisMetadataStore(private val stringRedisTemplate: StringRedisTemplate) : MetadataStore {
 
 	override fun put(key: String, value: String) {
@@ -61,13 +42,97 @@ class RedisMetadataStore(private val stringRedisTemplate: StringRedisTemplate) :
 		stringRedisTemplate.opsForValue().get(key)
 	else null
 
+}
 
+@Component
+class SimpleRunner(val ifc: IntegrationFlowContext,
+                   val pc: PinboardClient) : ApplicationRunner {
+
+	override fun run(args: ApplicationArguments?) {
+
+		val feeds = mapOf("https://spring.io/blog.atom" to listOf("spring", "twis"),
+				"https://cloudfoundry.org/feed/" to listOf("cloudfoundry", "twis"))
+
+		feeds.keys.forEach { url ->
+			val tags = feeds[url]
+			val urlAsKey = url.filter { it.isLetterOrDigit() }
+			val standardIntegrationFlow = IntegrationFlows
+					.from(Feed.inboundAdapter(UrlResource(url), urlAsKey), { it.poller({ it.fixedRate(500) }) })
+					.handle(GenericHandler<SyndEntry> { syndEntry, headers ->
+						processSyndEntry(syndEntry, tags!!)
+					})
+					.get()
+			val flowRegistration = ifc.registration(standardIntegrationFlow)
+					.id("flowForFeed${urlAsKey}")
+					.register()
+
+
+		}
+	}
+
+	fun processSyndEntry(syndEntry: SyndEntry, it: List<String>) {
+
+		val tags = it.map { it.toLowerCase() }
+		val link = syndEntry.link
+		val authors: Set<String> = hashSetOf<String>()
+				.also { a ->
+					if (syndEntry.author != null && syndEntry.author.isNotBlank()) {
+						a.add(syndEntry.author)
+					}
+					if (syndEntry.authors != null && syndEntry.authors.isNotEmpty()) {
+						a.addAll(syndEntry.authors.map { it.name ?: "" })
+					}
+					a.filter { it.trim() != "" }
+				}
+		val title = syndEntry.title
+		val date = Date((syndEntry.updatedDate ?: syndEntry.publishedDate ?: Date()).time)
+		try {
+
+			println("------------------------------------------------")
+			println("processing $link")
+			if (pc.getPosts(url = link).posts.isEmpty()) {
+				val post = pc.addPost(url = link, description = title,
+						tags = tags.toTypedArray(), dt = date, extended = "by ${authors.joinToString(" and ")}", shared = false, toread = false, replace = false)
+				if (post) {
+					println("added $link ('$title') to Pinboard")
+				}
+			}
+		}
+		catch (ex: Exception) {
+			ReflectionUtils.rethrowException(ex)
+		}
+	}
 }
 
 
+fun main(args: Array<String>) {
+	SpringApplicationBuilder()
+			.initializers(
+					beans {
+						bean {
+							Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors())
+						}
+						bean {
+							SimpleRunner(ref(), ref())
+						}
+						/*	bean(IntegrationContextUtils.METADATA_STORE_BEAN_NAME) {
+								RedisMetadataStore(ref())
+							}
+							bean {
+								FeedFlowRegistrationRunner(ref(), ref(), ref())
+							}
+							bean {
+								RedisMetadataStore(ref())
+							}*/
+					}
+			)
+			.sources(FeedApplication::class.java)
+			.run(*args)
+}
+
 // for this to work.
 
-
+/*
 class FeedFlowRegistrationRunner(val ifc: IntegrationFlowContext,
                                  val executor: ScheduledExecutorService,
                                  val pc: PinboardClient) : ApplicationRunner, ApplicationContextAware {
@@ -189,17 +254,20 @@ fun main(args: Array<String>) {
 						bean {
 							Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors())
 						}
-						bean(IntegrationContextUtils.METADATA_STORE_BEAN_NAME) {
-							RedisMetadataStore(ref())
-						}
 						bean {
-							FeedFlowRegistrationRunner(ref(), ref(), ref())
+							SimpleRunner(ref())
 						}
-						bean {
-							RedisMetadataStore(ref())
-						}
+						/*	bean(IntegrationContextUtils.METADATA_STORE_BEAN_NAME) {
+								RedisMetadataStore(ref())
+							}
+							bean {
+								FeedFlowRegistrationRunner(ref(), ref(), ref())
+							}
+							bean {
+								RedisMetadataStore(ref())
+							}*/
 					}
 			)
 			.sources(FeedApplication::class.java)
 			.run(*args)
-}
+}*/
