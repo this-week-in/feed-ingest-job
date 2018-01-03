@@ -9,10 +9,13 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
+import org.springframework.cloud.Cloud
+import org.springframework.cloud.CloudFactory
 import org.springframework.context.support.GenericApplicationContext
 import org.springframework.context.support.beans
 import org.springframework.core.io.UrlResource
 import org.springframework.core.task.TaskExecutor
+import org.springframework.data.redis.connection.RedisConnectionFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.integration.context.IntegrationContextUtils
 import org.springframework.integration.dsl.IntegrationFlows
@@ -104,8 +107,8 @@ class FeedIngestRunner(val ifc: IntegrationFlowContext,
 	override fun run(args: ApplicationArguments) {
 
 		val feeds = mapOf(
-			"https://spring.io/blog.atom" to listOf("spring", "twis"),
-			"https://cloudfoundry.org/feed/" to listOf("cloudfoundry", "twis"))
+				"https://spring.io/blog.atom" to listOf("spring", "twis"),
+				"https://cloudfoundry.org/feed/" to listOf("cloudfoundry", "twis"))
 
 		feeds.keys.forEach { url ->
 			val tags = feeds[url]
@@ -160,6 +163,14 @@ fun main(args: Array<String>) {
 	SpringApplicationBuilder()
 			.initializers(
 					beans {
+						profile("cloud") {
+							bean {
+								CloudFactory().cloud
+							}
+							bean {
+								ref<Cloud>().getSingletonServiceConnector(RedisConnectionFactory::class.java, null)
+							}
+						}
 						bean {
 							Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors())
 						}
