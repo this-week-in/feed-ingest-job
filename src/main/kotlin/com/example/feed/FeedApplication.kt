@@ -71,7 +71,7 @@ class RedisMetadataStore(val stringRedisTemplate: StringRedisTemplate) : Metadat
 }
 
 @ConfigurationProperties("ingest")
-class IngestProperties(val inactivityThresholdInSeconds: Long = 3 * 60,
+class IngestProperties(val inactivityThresholdInSeconds: Long = 5 * 60,
                        val inactivityHeartbeatInSeconds: Long = 1,
                        val pollRateInSeconds: Long = 1)
 

@@ -21,5 +21,5 @@ cf restage ${APP_NAME}
 cf delete-job -f ${JOB_NAME}
 cf create-job ${APP_NAME} ${JOB_NAME} ".java-buildpack/open_jdk_jre/bin/java org.springframework.boot.loader.JarLauncher"
 cf run-job ${JOB_NAME}
-cf schedule-job ${JOB_NAME} "*/5 * ? * *"
+cf schedule-job ${JOB_NAME} "1 * ? * *"
 #cf schedule-job $JOB_NAME "0 1 ? * *"
