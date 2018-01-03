@@ -34,6 +34,17 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 
 /**
+ * Monitors a collection of RSS or ATOM feeds and synchronizes them into a Pinboard account.
+ *
+ * This application dynamically stands up instances of the Spring Integration inbound ATOM/RSS feed adapter.
+ * One interesting possibility is that we could refactor so that its ignorant of which feeds its processing, drawing
+ * the actual feed information from configuration, incoming messages, or a database.
+ *
+ * This application is designed to be run as a Pivotal Cloud Foundry scheduled job. It'll startup, do some work and - if a
+ * (configurable) period elapses with no new incoming elements - it'll shut itself down. The PCF scheduler
+ * will wake it up at whatever specified interval we want. Outside of a PCF environment this is reproduced
+ * using something like CRON.
+ *
  * @author <a href="mailto:josh@joshlong.com">Josh Long</a>
  */
 @SpringBootApplication
@@ -60,11 +71,13 @@ class RedisMetadataStore(val stringRedisTemplate: StringRedisTemplate) : Metadat
 }
 
 @ConfigurationProperties("ingest")
-class IngestProperties(val inactivityThresholdInSeconds: Long = 60)
+class IngestProperties(val inactivityThresholdInSeconds: Long = 3 * 60,
+                       val inactivityHeartbeatInSeconds: Long = 1,
+                       val pollRateInSeconds: Long = 1)
 
 @Component
 class InactivityMonitor(
-		ingestProperties: IngestProperties,
+		private val ingestProperties: IngestProperties,
 		private val executor: TaskExecutor,
 		private val applicationContext: GenericApplicationContext) : InitializingBean {
 
@@ -83,7 +96,7 @@ class InactivityMonitor(
 		this.executor.execute({
 			this.log.info("About to begin ${javaClass.name} thread.")
 			while (true) {
-				Thread.sleep(1000 * 1)
+				Thread.sleep(this.ingestProperties.inactivityHeartbeatInSeconds * 1000)
 				val now = System.currentTimeMillis()
 				val then = this.lastTick.get()
 				val diff = now - then
@@ -100,6 +113,7 @@ class InactivityMonitor(
 @Component
 class FeedIngestRunner(val ifc: IntegrationFlowContext,
                        val pc: PinboardClient,
+                       val ingestProperties: IngestProperties,
                        val inactivityMonitor: InactivityMonitor) : ApplicationRunner {
 
 	private val log = LogFactory.getLog(javaClass)
@@ -114,7 +128,7 @@ class FeedIngestRunner(val ifc: IntegrationFlowContext,
 			val tags = feeds[url]
 			val urlAsKey = url.filter { it.isLetterOrDigit() }
 			val standardIntegrationFlow = IntegrationFlows
-					.from(Feed.inboundAdapter(UrlResource(url), urlAsKey), { it.poller({ it.fixedRate(500) }) })
+					.from(Feed.inboundAdapter(UrlResource(url), urlAsKey), { it.poller({ it.fixedRate(ingestProperties.pollRateInSeconds * 1000) }) })
 					.handle(GenericHandler<SyndEntry> { syndEntry, headers ->
 						processSyndEntry(syndEntry, tags!!)
 					})
@@ -175,7 +189,7 @@ fun main(args: Array<String>) {
 							Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors())
 						}
 						bean {
-							FeedIngestRunner(ref(), ref(), ref())
+							FeedIngestRunner(ref(), ref(), ref(), ref())
 						}
 						bean(IntegrationContextUtils.METADATA_STORE_BEAN_NAME) {
 							RedisMetadataStore(ref())
