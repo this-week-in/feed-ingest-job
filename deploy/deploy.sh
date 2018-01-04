@@ -5,7 +5,7 @@ JOB_NAME=${APP_NAME}
 SCHEDULER_SERVICE_NAME=scheduler-joshlong
 
 #https://docs.cloudfoundry.org/devguide/deploy-apps/healthchecks.html#setting_health_checks
-cf push -b java_buildpack -u process --no-route  -p target/${APP_NAME}.jar ${APP_NAME}
+cf push -b java_buildpack -u none --no-route  -p target/${APP_NAME}.jar ${APP_NAME}
 
 # scheduler
 cf s | grep ${SCHEDULER_SERVICE_NAME} || cf cs scheduler-for-pcf standard ${SCHEDULER_SERVICE_NAME}
