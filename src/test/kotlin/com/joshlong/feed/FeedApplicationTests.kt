@@ -1,4 +1,4 @@
-package com.example.feed
+package com.joshlong.feed
 
 import org.junit.Test
 import org.junit.runner.RunWith

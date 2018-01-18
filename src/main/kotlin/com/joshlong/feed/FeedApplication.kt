@@ -1,4 +1,4 @@
-package com.example.feed
+package com.joshlong.feed
 
 import com.joshlong.jobs.watchdog.HeartbeatEvent
 import com.rometools.rome.feed.synd.SyndEntry
