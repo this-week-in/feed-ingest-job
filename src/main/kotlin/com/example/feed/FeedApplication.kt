@@ -1,8 +1,8 @@
 package com.example.feed
 
+import com.joshlong.jobs.watchdog.HeartbeatEvent
 import com.rometools.rome.feed.synd.SyndEntry
 import org.apache.commons.logging.LogFactory
-import org.springframework.beans.factory.InitializingBean
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.autoconfigure.SpringBootApplication
@@ -11,10 +11,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.cloud.Cloud
 import org.springframework.cloud.CloudFactory
-import org.springframework.context.support.GenericApplicationContext
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.context.support.beans
 import org.springframework.core.io.UrlResource
-import org.springframework.core.task.TaskExecutor
 import org.springframework.data.redis.connection.RedisConnectionFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.integration.context.IntegrationContextUtils
@@ -26,12 +25,10 @@ import org.springframework.integration.metadata.MetadataStore
 import org.springframework.stereotype.Component
 import org.springframework.util.ReflectionUtils
 import pinboard.PinboardClient
-import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.util.*
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Monitors a collection of RSS or ATOM feeds and synchronizes them into a Pinboard account.
@@ -71,50 +68,13 @@ class RedisMetadataStore(val stringRedisTemplate: StringRedisTemplate) : Metadat
 }
 
 @ConfigurationProperties("ingest")
-class IngestProperties(val inactivityThresholdInSeconds: Long = 5 * 60,
-                       val inactivityHeartbeatInSeconds: Long = 1,
-                       val pollRateInSeconds: Long = 1)
-
-@Component
-class InactivityMonitor(
-		private val ingestProperties: IngestProperties,
-		private val executor: TaskExecutor,
-		private val applicationContext: GenericApplicationContext) : InitializingBean {
-
-	private val window = Duration.ofSeconds(
-			ingestProperties.inactivityThresholdInSeconds).toMillis()
-
-	private val log = LogFactory.getLog(javaClass)
-
-	private val lastTick = AtomicLong(System.currentTimeMillis())
-
-	fun tick() {
-		this.lastTick.set(System.currentTimeMillis())
-	}
-
-	override fun afterPropertiesSet() {
-		this.executor.execute({
-			this.log.info("About to begin ${javaClass.name} thread.")
-			while (true) {
-				Thread.sleep(this.ingestProperties.inactivityHeartbeatInSeconds * 1000)
-				val now = System.currentTimeMillis()
-				val then = this.lastTick.get()
-				val diff = now - then
-				if (diff > window) {
-					this.log.info("There has been ${window}ms of inactivity. " +
-							"Calling ${applicationContext.javaClass.name}#close()")
-					this.applicationContext.close()
-				}
-			}
-		})
-	}
-}
+class IngestProperties(val pollRateInSeconds: Long = 1)
 
 @Component
 class FeedIngestRunner(val ifc: IntegrationFlowContext,
                        val pc: PinboardClient,
-                       val ingestProperties: IngestProperties,
-                       val inactivityMonitor: InactivityMonitor) : ApplicationRunner {
+                       val publisher: ApplicationEventPublisher,
+                       val ingestProperties: IngestProperties) : ApplicationRunner {
 
 	private val log = LogFactory.getLog(javaClass)
 
@@ -165,8 +125,9 @@ class FeedIngestRunner(val ifc: IntegrationFlowContext,
 					log.info("added $link ('$title') to Pinboard @ ${Instant.now().atZone(ZoneId.systemDefault())}")
 				}
 			}
-			this.inactivityMonitor.tick()
-		} catch (ex: Exception) {
+			this.publisher.publishEvent(HeartbeatEvent())
+		}
+		catch (ex: Exception) {
 			log.error("couldn't process $link.", ex)
 			ReflectionUtils.rethrowException(ex)
 		}
