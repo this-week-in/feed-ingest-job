@@ -29,7 +29,6 @@ import pinboard.PinboardClient
 import java.time.Instant
 import java.time.ZoneId
 import java.util.*
-import java.util.concurrent.Executors
 
 /**
  * Monitors a collection of RSS or ATOM feeds and synchronizes them into a Pinboard account.
@@ -74,7 +73,8 @@ class IngestProperties(val pollRateInSeconds: Long = 1)
 @Component
 class FeedIngestRunner(val ifc: IntegrationFlowContext,
                        val pc: PinboardClient,
-                       val ingestProperties: IngestProperties) : ApplicationRunner, ApplicationEventPublisherAware {
+                       val ingestProperties: IngestProperties) : ApplicationRunner,
+		ApplicationEventPublisherAware {
 
 	private var publisher: ApplicationEventPublisher? = null
 
@@ -85,8 +85,6 @@ class FeedIngestRunner(val ifc: IntegrationFlowContext,
 	private val log = LogFactory.getLog(javaClass)
 
 	override fun run(args: ApplicationArguments) {
-
-		log.info("CALCULATED_MEMORY: ${System.getenv()["CALCULATED_MEMORY"]}")
 
 		val feeds = mapOf(
 				"https://spring.io/blog.atom" to listOf("spring", "twis"),
@@ -108,6 +106,7 @@ class FeedIngestRunner(val ifc: IntegrationFlowContext,
 	}
 
 	fun processSyndEntry(syndEntry: SyndEntry, incomingTags: List<String>) {
+
 
 		val tags = incomingTags.map { it.toLowerCase() }
 		val link = syndEntry.link
