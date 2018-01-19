@@ -80,7 +80,7 @@ class FeedIngestRunner(val ifc: IntegrationFlowContext,
 
 	override fun run(args: ApplicationArguments) {
 
-		log.info("CALCULATED_MEMORY: ${System.getenv()["CALCULATED_MEMORY"]}")
+		log.info("CALCULATED_MEMORY: ${ System.getenv()["CALCULATED_MEMORY"] }")
 
 		val feeds = mapOf(
 				"https://spring.io/blog.atom" to listOf("spring", "twis"),
