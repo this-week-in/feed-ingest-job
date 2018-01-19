@@ -80,6 +80,8 @@ class FeedIngestRunner(val ifc: IntegrationFlowContext,
 
 	override fun run(args: ApplicationArguments) {
 
+		log.info("CALCULATED_MEMORY: ${System.getenv()["CALCULATED_MEMORY"]}")
+
 		val feeds = mapOf(
 				"https://spring.io/blog.atom" to listOf("spring", "twis"),
 				"https://cloudfoundry.org/feed/" to listOf("cloudfoundry", "twis"))
@@ -126,8 +128,7 @@ class FeedIngestRunner(val ifc: IntegrationFlowContext,
 				}
 			}
 			this.publisher.publishEvent(HeartbeatEvent())
-		}
-		catch (ex: Exception) {
+		} catch (ex: Exception) {
 			log.error("couldn't process $link.", ex)
 			ReflectionUtils.rethrowException(ex)
 		}
