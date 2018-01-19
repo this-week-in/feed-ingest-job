@@ -154,9 +154,6 @@ fun main(args: Array<String>) {
 							}
 						}
 						bean {
-							Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors())
-						}
-						bean {
 							FeedIngestRunner(ref(), ref(), ref())
 						}
 						bean(IntegrationContextUtils.METADATA_STORE_BEAN_NAME) {
