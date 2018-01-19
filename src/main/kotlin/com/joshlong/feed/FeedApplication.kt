@@ -12,6 +12,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.cloud.Cloud
 import org.springframework.cloud.CloudFactory
 import org.springframework.context.ApplicationEventPublisher
+import org.springframework.context.ApplicationEventPublisherAware
 import org.springframework.context.support.beans
 import org.springframework.core.io.UrlResource
 import org.springframework.data.redis.connection.RedisConnectionFactory
@@ -73,14 +74,19 @@ class IngestProperties(val pollRateInSeconds: Long = 1)
 @Component
 class FeedIngestRunner(val ifc: IntegrationFlowContext,
                        val pc: PinboardClient,
-                       val publisher: ApplicationEventPublisher,
-                       val ingestProperties: IngestProperties) : ApplicationRunner {
+                       val ingestProperties: IngestProperties) : ApplicationRunner, ApplicationEventPublisherAware {
+
+	private var publisher: ApplicationEventPublisher? = null
+
+	override fun setApplicationEventPublisher(p0: ApplicationEventPublisher?) {
+		this.publisher = p0
+	}
 
 	private val log = LogFactory.getLog(javaClass)
 
 	override fun run(args: ApplicationArguments) {
 
-		log.info("CALCULATED_MEMORY: ${ System.getenv()["CALCULATED_MEMORY"] }")
+		log.info("CALCULATED_MEMORY: ${System.getenv()["CALCULATED_MEMORY"]}")
 
 		val feeds = mapOf(
 				"https://spring.io/blog.atom" to listOf("spring", "twis"),
@@ -127,7 +133,7 @@ class FeedIngestRunner(val ifc: IntegrationFlowContext,
 					log.info("added $link ('$title') to Pinboard @ ${Instant.now().atZone(ZoneId.systemDefault())}")
 				}
 			}
-			this.publisher.publishEvent(HeartbeatEvent())
+			this.publisher!!.publishEvent(HeartbeatEvent())
 		} catch (ex: Exception) {
 			log.error("couldn't process $link.", ex)
 			ReflectionUtils.rethrowException(ex)
@@ -151,7 +157,7 @@ fun main(args: Array<String>) {
 							Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors())
 						}
 						bean {
-							FeedIngestRunner(ref(), ref(), ref(), ref())
+							FeedIngestRunner(ref(), ref(), ref())
 						}
 						bean(IntegrationContextUtils.METADATA_STORE_BEAN_NAME) {
 							RedisMetadataStore(ref())

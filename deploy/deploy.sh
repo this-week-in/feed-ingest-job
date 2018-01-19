@@ -5,7 +5,7 @@ JOB_NAME=${APP_NAME}
 SCHEDULER_SERVICE_NAME=scheduler-joshlong
 
 #https://docs.cloudfoundry.org/devguide/deploy-apps/healthchecks.html#setting_health_checks
-cd d -f ${APP_NAME} # delete if it already exists, just in case
+cf d -f ${APP_NAME} # delete if it already exists, just in case
 cf push -b java_buildpack -u none --no-route --no-start -p target/${APP_NAME}.jar ${APP_NAME}
 cf set-health-check $APP_NAME none
 
