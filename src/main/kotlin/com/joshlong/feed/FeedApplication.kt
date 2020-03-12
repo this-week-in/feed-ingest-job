@@ -87,8 +87,9 @@ class FeedIngestRunner(val ifc: IntegrationFlowContext,
 	override fun run(args: ApplicationArguments) {
 
 		val feeds = mapOf(
-				"https://spring.io/blog.atom" to listOf("spring", "twis"),
-				"https://cloudfoundry.org/feed/" to listOf("cloudfoundry", "twis"))
+ 			"https://blogs.vmware.com/all-vmware-blogs/wprss" to listOf("twis" , "vmware"), 
+                        "https://spring.io/blog.atom" to listOf("spring", "twis"),
+			"https://cloudfoundry.org/feed/" to listOf("cloudfoundry", "twis"))
 
 		feeds.keys.forEach { url ->
 			val tags = feeds[url]
