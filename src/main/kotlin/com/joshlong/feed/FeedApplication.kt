@@ -78,7 +78,7 @@ class FeedIngestRunner(val ifc: IntegrationFlowContext,
 
 	private var publisher: ApplicationEventPublisher? = null
 
-	override fun setApplicationEventPublisher(p0: ApplicationEventPublisher?) {
+	override fun setApplicationEventPublisher(p0: ApplicationEventPublisher) {
 		this.publisher = p0
 	}
 
@@ -86,16 +86,18 @@ class FeedIngestRunner(val ifc: IntegrationFlowContext,
 
 	override fun run(args: ApplicationArguments) {
 
+		val twisTag = "twis"
 		val feeds = mapOf(
- 			"https://blogs.vmware.com/all-vmware-blogs/wprss" to listOf("twis" , "vmware"), 
-                        "https://spring.io/blog.atom" to listOf("spring", "twis"),
-			"https://cloudfoundry.org/feed/" to listOf("cloudfoundry", "twis"))
+				"https://blogs.vmware.com/all-vmware-blogs/wprss" to listOf("vmware", twisTag),
+				"https://spring.io/blog.atom" to listOf("spring", twisTag),
+				"https://cloudfoundry.org/feed/" to listOf("cloudfoundry", twisTag))
 
 		feeds.keys.forEach { url ->
 			val tags = feeds[url]
 			val urlAsKey = url.filter { it.isLetterOrDigit() }
 			val standardIntegrationFlow = IntegrationFlows
-					.from(Feed.inboundAdapter(UrlResource(url), urlAsKey), { it.poller({ it.fixedRate(ingestProperties.pollRateInSeconds * 1000) }) })
+					.from(Feed.inboundAdapter(UrlResource(url), urlAsKey))
+					{ outerIt -> outerIt.poller { it.fixedRate(ingestProperties.pollRateInSeconds * 1000) } }
 					.handle(GenericHandler<SyndEntry> { syndEntry, headers ->
 						processSyndEntry(syndEntry, tags!!)
 					})
@@ -107,22 +109,24 @@ class FeedIngestRunner(val ifc: IntegrationFlowContext,
 	}
 
 	fun processSyndEntry(syndEntry: SyndEntry, incomingTags: List<String>) {
-
-
 		val tags = incomingTags.map { it.toLowerCase() }
 		val link = syndEntry.link
-		val authors: Set<String> = hashSetOf<String>()
-				.also { a ->
+		val authors = mutableSetOf<String>()
+				.apply {
 					if (syndEntry.author != null && syndEntry.author.isNotBlank()) {
-						a.add(syndEntry.author)
+						add(syndEntry.author)
 					}
 					if (syndEntry.authors != null && syndEntry.authors.isNotEmpty()) {
-						a.addAll(syndEntry.authors.map { it.name ?: "" })
+						addAll(syndEntry.authors.map { it.name ?: "" })
 					}
-					a.filter { it.trim() != "" }
+					filter { it.trim() != "" }
 				}
 		val title = syndEntry.title
-		val date = Date((syndEntry.updatedDate ?: syndEntry.publishedDate ?: Date()).time)
+		val date = Date(
+				(syndEntry.updatedDate
+						?: syndEntry.publishedDate
+						?: Date()).time
+		)
 		try {
 			log.info("Processing $link")
 			if (pc.getPosts(url = link).posts.isEmpty()) {
