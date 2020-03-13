@@ -1,14 +1,15 @@
 package com.joshlong.feed
 
 import com.joshlong.jobs.watchdog.HeartbeatEvent
+import com.joshlong.jobs.watchdog.WatchdogProperties
 import com.rometools.rome.feed.synd.SyndEntry
 import org.apache.commons.logging.LogFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.autoconfigure.SpringBootApplication
-import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
+import org.springframework.boot.runApplication
 import org.springframework.cloud.Cloud
 import org.springframework.cloud.CloudFactory
 import org.springframework.context.ApplicationEventPublisher
@@ -48,7 +49,7 @@ import java.util.*
 @EnableConfigurationProperties(IngestProperties::class)
 class FeedApplication
 
-class RedisMetadataStore(val stringRedisTemplate: StringRedisTemplate) : MetadataStore {
+class RedisMetadataStore(private val stringRedisTemplate: StringRedisTemplate) : MetadataStore {
 
 	override fun put(key: String, value: String) {
 		stringRedisTemplate.opsForValue().set(key, value)
@@ -94,10 +95,12 @@ class FeedIngestRunner(private val ifc: IntegrationFlowContext,
 				.forEach { (url, tags) ->
 					val urlAsKey = url.filter { it.isLetterOrDigit() }
 					val standardIntegrationFlow = IntegrationFlows
-							.from(Feed.inboundAdapter(UrlResource(url), urlAsKey))
-							{ outerIt -> outerIt.poller { it.fixedRate(ingestProperties.pollRateInSeconds * 1000) } }
+							.from(Feed.inboundAdapter(UrlResource(url), urlAsKey)) { pollerConfig ->
+								pollerConfig.poller { it.fixedRate(ingestProperties.pollRateInSeconds * 1000) }
+							}
 							.handle(GenericHandler<SyndEntry> { syndEntry, _ ->
 								processSyndEntry(syndEntry, tags)
+								null
 							})
 							.get()
 					ifc.registration(standardIntegrationFlow).id("flowForFeed${urlAsKey}").register()
@@ -141,26 +144,25 @@ class FeedIngestRunner(private val ifc: IntegrationFlowContext,
 	}
 }
 
-fun main(args: Array<String>) {
-	SpringApplicationBuilder()
-			.initializers(
-					beans {
-						profile("cloud") {
-							bean {
-								CloudFactory().cloud
-							}
-							bean {
-								ref<Cloud>().getSingletonServiceConnector(RedisConnectionFactory::class.java, null)
-							}
-						}
-						bean {
-							FeedIngestRunner(ref(), ref(), ref())
-						}
-						bean(IntegrationContextUtils.METADATA_STORE_BEAN_NAME) {
-							RedisMetadataStore(ref())
-						}
+fun main() {
+	runApplication<FeedApplication> {
+		addInitializers(beans {
+			beans {
+				profile("cloud") {
+					bean {
+						CloudFactory().cloud
 					}
-			)
-			.sources(FeedApplication::class.java)
-			.run(*args)
+					bean {
+						ref<Cloud>().getSingletonServiceConnector(RedisConnectionFactory::class.java, null)
+					}
+				}
+				bean {
+					FeedIngestRunner(ref(), ref(), ref())
+				}
+				bean(IntegrationContextUtils.METADATA_STORE_BEAN_NAME) {
+					RedisMetadataStore(ref())
+				}
+			}
+		})
+	}
 }
