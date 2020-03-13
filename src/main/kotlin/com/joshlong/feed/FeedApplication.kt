@@ -1,7 +1,6 @@
 package com.joshlong.feed
 
 import com.joshlong.jobs.watchdog.HeartbeatEvent
-import com.joshlong.jobs.watchdog.WatchdogProperties
 import com.rometools.rome.feed.synd.SyndEntry
 import org.apache.commons.logging.LogFactory
 import org.springframework.boot.ApplicationArguments
@@ -61,8 +60,7 @@ class RedisMetadataStore(private val stringRedisTemplate: StringRedisTemplate) :
 				val existingValue = stringRedisTemplate.opsForValue().get(key)
 				stringRedisTemplate.delete(key)
 				existingValue
-			}
-			else null
+			} else null
 
 	override fun get(key: String): String? =
 			if (stringRedisTemplate.hasKey(key))
@@ -89,8 +87,12 @@ class FeedIngestRunner(private val ifc: IntegrationFlowContext,
 
 	override fun run(args: ApplicationArguments) {
 		val twisTag = "twis"
+		val vmwareTags = listOf("vmware", twisTag)
 		mapOf(
-				"https://blogs.vmware.com/all-vmware-blogs/wprss" to listOf("vmware", twisTag),
+//				"https://blogs.vmware.com/all-vmware-blogs/wprss" to vmwareTags,
+				"http://feeds.feedburner.com/vmware/vmworld" to vmwareTags,
+				"https://blogs.vmware.com/research/feed/" to vmwareTags,
+				"https://blogs.vmware.com/opensource/feed/" to vmwareTags,
 				"https://spring.io/blog.atom" to listOf("spring", twisTag),
 				"https://cloudfoundry.org/feed/" to listOf("cloudfoundry", twisTag)
 		)
