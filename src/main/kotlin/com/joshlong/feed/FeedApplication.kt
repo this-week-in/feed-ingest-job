@@ -49,7 +49,8 @@ import java.util.*
 @EnableConfigurationProperties(IngestProperties::class)
 class FeedApplication
 
-class RedisMetadataStore(private val stringRedisTemplate: StringRedisTemplate) : MetadataStore {
+class RedisMetadataStore(private val stringRedisTemplate: StringRedisTemplate) :
+		MetadataStore {
 
 	override fun put(key: String, value: String) {
 		stringRedisTemplate.opsForValue().set(key, value)
@@ -60,7 +61,8 @@ class RedisMetadataStore(private val stringRedisTemplate: StringRedisTemplate) :
 				val existingValue = stringRedisTemplate.opsForValue().get(key)
 				stringRedisTemplate.delete(key)
 				existingValue
-			} else null
+			}
+			else null
 
 	override fun get(key: String): String? =
 			if (stringRedisTemplate.hasKey(key))
