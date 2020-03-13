@@ -71,41 +71,37 @@ class RedisMetadataStore(val stringRedisTemplate: StringRedisTemplate) : Metadat
 class IngestProperties(val pollRateInSeconds: Long = 1)
 
 @Component
-class FeedIngestRunner(val ifc: IntegrationFlowContext,
-                       val pc: PinboardClient,
-                       val ingestProperties: IngestProperties) : ApplicationRunner,
+class FeedIngestRunner(private val ifc: IntegrationFlowContext,
+                       private val pc: PinboardClient,
+                       private val ingestProperties: IngestProperties) :
+		ApplicationRunner,
 		ApplicationEventPublisherAware {
 
+	private val log = LogFactory.getLog(javaClass)
 	private var publisher: ApplicationEventPublisher? = null
 
 	override fun setApplicationEventPublisher(p0: ApplicationEventPublisher) {
 		this.publisher = p0
 	}
 
-	private val log = LogFactory.getLog(javaClass)
-
 	override fun run(args: ApplicationArguments) {
-
 		val twisTag = "twis"
-		val feeds = mapOf(
+		mapOf(
 				"https://blogs.vmware.com/all-vmware-blogs/wprss" to listOf("vmware", twisTag),
 				"https://spring.io/blog.atom" to listOf("spring", twisTag),
-				"https://cloudfoundry.org/feed/" to listOf("cloudfoundry", twisTag))
-
-		feeds.keys.forEach { url ->
-			val tags = feeds[url]
-			val urlAsKey = url.filter { it.isLetterOrDigit() }
-			val standardIntegrationFlow = IntegrationFlows
-					.from(Feed.inboundAdapter(UrlResource(url), urlAsKey))
-					{ outerIt -> outerIt.poller { it.fixedRate(ingestProperties.pollRateInSeconds * 1000) } }
-					.handle(GenericHandler<SyndEntry> { syndEntry, headers ->
-						processSyndEntry(syndEntry, tags!!)
-					})
-					.get()
-			val flowRegistration = ifc.registration(standardIntegrationFlow)
-					.id("flowForFeed${urlAsKey}")
-					.register()
-		}
+				"https://cloudfoundry.org/feed/" to listOf("cloudfoundry", twisTag)
+		)
+				.forEach { (url, tags) ->
+					val urlAsKey = url.filter { it.isLetterOrDigit() }
+					val standardIntegrationFlow = IntegrationFlows
+							.from(Feed.inboundAdapter(UrlResource(url), urlAsKey))
+							{ outerIt -> outerIt.poller { it.fixedRate(ingestProperties.pollRateInSeconds * 1000) } }
+							.handle(GenericHandler<SyndEntry> { syndEntry, _ ->
+								processSyndEntry(syndEntry, tags)
+							})
+							.get()
+					ifc.registration(standardIntegrationFlow).id("flowForFeed${urlAsKey}").register()
+				}
 	}
 
 	fun processSyndEntry(syndEntry: SyndEntry, incomingTags: List<String>) {
