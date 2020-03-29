@@ -6,12 +6,9 @@ SCHEDULER_SERVICE_NAME=scheduler-joshlong
 REDIS_NAME=redis-cache
 
 cf d -f ${APP_NAME}
-
-
 cf push -b java_buildpack -u none --no-route --no-start -p target/${APP_NAME}.jar ${APP_NAME}
-#cf push -b java_buildpack -u process --no-route --no-start -p target/${APP_NAME}.jar ${APP_NAME}
+cf set-health-check $APP_NAME none
 
-## scheduler
 cf s | grep ${SCHEDULER_SERVICE_NAME} || cf cs scheduler-for-pcf standard ${SCHEDULER_SERVICE_NAME}
 cf bs ${APP_NAME} ${SCHEDULER_SERVICE_NAME}
 

@@ -51,11 +51,6 @@ class FeedApplication {
 			RedisMetadataStore(stringRedisTemplate)
 
 }
-//
-//@Configuration
-//@ConfigurationProperties("vcap.services.cat_picture_service.credentials")
-//data class CatPictureServiceProperties(var username: String = "", var password: String = "")
-//
 
 class RedisMetadataStore(private val stringRedisTemplate: StringRedisTemplate) :
 		MetadataStore {
