@@ -1,5 +1,7 @@
 package com.joshlong.feed
 
+//import org.springframework.cloud.Cloud
+//import org.springframework.cloud.CloudFactory
 import com.joshlong.jobs.watchdog.HeartbeatEvent
 import com.rometools.rome.feed.synd.SyndEntry
 import org.apache.commons.logging.LogFactory
@@ -9,13 +11,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.runApplication
-import org.springframework.cloud.Cloud
-import org.springframework.cloud.CloudFactory
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.context.ApplicationEventPublisherAware
-import org.springframework.context.support.beans
+import org.springframework.context.annotation.Bean
 import org.springframework.core.io.UrlResource
-import org.springframework.data.redis.connection.RedisConnectionFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.integration.context.IntegrationContextUtils
 import org.springframework.integration.dsl.IntegrationFlows
@@ -24,7 +23,6 @@ import org.springframework.integration.feed.dsl.Feed
 import org.springframework.integration.handler.GenericHandler
 import org.springframework.integration.metadata.MetadataStore
 import org.springframework.stereotype.Component
-import org.springframework.util.ReflectionUtils
 import pinboard.PinboardClient
 import java.time.Instant
 import java.time.ZoneId
@@ -46,7 +44,18 @@ import java.util.*
  */
 @SpringBootApplication
 @EnableConfigurationProperties(IngestProperties::class)
-class FeedApplication
+class FeedApplication {
+
+	@Bean(IntegrationContextUtils.METADATA_STORE_BEAN_NAME)
+	fun redisMetadataStore(stringRedisTemplate: StringRedisTemplate) =
+			RedisMetadataStore(stringRedisTemplate)
+
+}
+//
+//@Configuration
+//@ConfigurationProperties("vcap.services.cat_picture_service.credentials")
+//data class CatPictureServiceProperties(var username: String = "", var password: String = "")
+//
 
 class RedisMetadataStore(private val stringRedisTemplate: StringRedisTemplate) :
 		MetadataStore {
@@ -141,16 +150,17 @@ class FeedIngestRunner(private val ifc: IntegrationFlowContext,
 				}
 			}
 			this.publisher!!.publishEvent(HeartbeatEvent())
-		}
-		catch (ex: Exception) {
+		} catch (ex: Exception) {
 			log.error("couldn't process $link.", ex)
 		}
 	}
 }
 
 fun main() {
-	runApplication<FeedApplication> {
-		addInitializers(beans {
+	runApplication<FeedApplication>()
+
+	//{
+/*		addInitializers(beans {
 			beans {
 				profile("cloud") {
 					bean {
@@ -167,6 +177,6 @@ fun main() {
 					RedisMetadataStore(ref())
 				}
 			}
-		})
-	}
+		})*/
+	//}
 }
