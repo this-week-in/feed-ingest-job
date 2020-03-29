@@ -8,8 +8,8 @@ REDIS_NAME=redis-cache
 cf d -f ${APP_NAME}
 
 
-#cf push -b java_buildpack -u none --no-route --no-start -p target/${APP_NAME}.jar ${APP_NAME}
-cf push -b java_buildpack -u process --no-route --no-start -p target/${APP_NAME}.jar ${APP_NAME}
+cf push -b java_buildpack -u none --no-route --no-start -p target/${APP_NAME}.jar ${APP_NAME}
+#cf push -b java_buildpack -u process --no-route --no-start -p target/${APP_NAME}.jar ${APP_NAME}
 
 ## scheduler
 cf s | grep ${SCHEDULER_SERVICE_NAME} || cf cs scheduler-for-pcf standard ${SCHEDULER_SERVICE_NAME}
