@@ -8,7 +8,8 @@ REDIS_NAME=redis-cache
 cf d -f ${APP_NAME}
 
 
-cf push -b java_buildpack -u none --no-route --no-start -p target/${APP_NAME}.jar ${APP_NAME}
+#cf push -b java_buildpack -u none --no-route --no-start -p target/${APP_NAME}.jar ${APP_NAME}
+cf push -b java_buildpack -u process --no-route --no-start -p target/${APP_NAME}.jar ${APP_NAME}
 
 ## scheduler
 cf s | grep ${SCHEDULER_SERVICE_NAME} || cf cs scheduler-for-pcf standard ${SCHEDULER_SERVICE_NAME}
@@ -23,9 +24,6 @@ cf set-env ${APP_NAME} JBP_CONFIG_OPEN_JDK_JRE '{ jre: { version: 11.+}}'
 
 cf restart ${APP_NAME}
 
-# https://docs.pivotal.io/platform/application-service/2-8/devguide/using-tasks.html#manage-tasks
-# https://docs.pivotal.io/scheduler/1-2/syntax.html
-# https://docs.pivotal.io/scheduler/1-2/using-jobs.html
 cf jobs  | grep $JOB_NAME && cf delete-job -f ${JOB_NAME}
 cf create-job ${APP_NAME} ${JOB_NAME} ".java-buildpack/open_jdk_jre/bin/java org.springframework.boot.loader.JarLauncher"
 cf schedule-job ${JOB_NAME} "*/15 * ? * *"
