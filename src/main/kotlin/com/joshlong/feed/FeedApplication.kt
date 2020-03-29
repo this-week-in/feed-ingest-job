@@ -141,9 +141,9 @@ class FeedIngestRunner(private val ifc: IntegrationFlowContext,
 				}
 			}
 			this.publisher!!.publishEvent(HeartbeatEvent())
-		} catch (ex: Exception) {
+		}
+		catch (ex: Exception) {
 			log.error("couldn't process $link.", ex)
-			ReflectionUtils.rethrowException(ex)
 		}
 	}
 }
