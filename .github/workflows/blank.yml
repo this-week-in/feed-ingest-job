@@ -22,7 +22,7 @@ on:
   pull_request:
     branches: [ master ]
   schedule:
-    - cron: '55 2 * * *'    
+    - cron: '55 */2 * * *'    
 
 jobs:
 
