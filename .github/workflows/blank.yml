@@ -4,6 +4,9 @@
 name: CI
 
 env:
+  REDIS_PORT: ${{ secrets.REDIS_PORT }}
+  REDIS_HOST: ${{ secrets.REDIS_HOST }}
+  REDIS_PW: ${{ secrets.REDIS_PW }}
   TWITTER_TWI_CLIENT_KEY: ${{ secrets.TWITTER_TWI_CLIENT_KEY }}
   TWITTER_TWI_CLIENT_KEY_SECRET: ${{ secrets.TWITTER_TWI_CLIENT_KEY_SECRET }}
   PINBOARD_TOKEN: ${{ secrets.PINBOARD_TOKEN }}
@@ -13,7 +16,8 @@ env:
   CF_API: ${{ secrets.CF_API }}
   CF_ORG: ${{ secrets.CF_ORG  }}
   ARTIFACTORY_USERNAME: ${{ secrets.ARTIFACTORY_USERNAME  }}
-  ARTIFACTORY_PASSWORD: ${{ secrets.ARTIFACTORY_PASSWORD  }}
+  ARTIFACTORY_PASSWORD : ${{ secrets.ARTIFACTORY_PASSWORD  }}
+  SPRING_PROFILES_ACTIVE: ci
 
 
 on:
