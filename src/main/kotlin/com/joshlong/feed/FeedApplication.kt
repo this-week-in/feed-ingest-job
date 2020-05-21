@@ -46,30 +46,30 @@ import java.util.*
 @EnableConfigurationProperties(IngestProperties::class)
 class FeedApplication {
 
-	@Bean(IntegrationContextUtils.METADATA_STORE_BEAN_NAME)
-	fun redisMetadataStore(stringRedisTemplate: StringRedisTemplate) =
-			RedisMetadataStore(stringRedisTemplate)
+    @Bean(IntegrationContextUtils.METADATA_STORE_BEAN_NAME)
+    fun redisMetadataStore(stringRedisTemplate: StringRedisTemplate) =
+            RedisMetadataStore(stringRedisTemplate)
 
 }
 
 class RedisMetadataStore(private val stringRedisTemplate: StringRedisTemplate) :
-		MetadataStore {
+        MetadataStore {
 
-	override fun put(key: String, value: String) {
-		stringRedisTemplate.opsForValue().set(key, value)
-	}
+    override fun put(key: String, value: String) {
+        stringRedisTemplate.opsForValue().set(key, value)
+    }
 
-	override fun remove(key: String): String? =
-			if (stringRedisTemplate.hasKey(key)) {
-				val existingValue = stringRedisTemplate.opsForValue().get(key)
-				stringRedisTemplate.delete(key)
-				existingValue
-			} else null
+    override fun remove(key: String): String? =
+            if (stringRedisTemplate.hasKey(key)) {
+                val existingValue = stringRedisTemplate.opsForValue().get(key)
+                stringRedisTemplate.delete(key)
+                existingValue
+            } else null
 
-	override fun get(key: String): String? =
-			if (stringRedisTemplate.hasKey(key))
-				stringRedisTemplate.opsForValue().get(key)
-			else null
+    override fun get(key: String): String? =
+            if (stringRedisTemplate.hasKey(key))
+                stringRedisTemplate.opsForValue().get(key)
+            else null
 }
 
 @ConfigurationProperties("ingest")
@@ -79,82 +79,83 @@ class IngestProperties(val pollRateInSeconds: Long = 1)
 class FeedIngestRunner(private val ifc: IntegrationFlowContext,
                        private val pc: PinboardClient,
                        private val ingestProperties: IngestProperties) :
-		ApplicationRunner,
-		ApplicationEventPublisherAware {
+        ApplicationRunner,
+        ApplicationEventPublisherAware {
 
-	private val log = LogFactory.getLog(javaClass)
-	private var publisher: ApplicationEventPublisher? = null
+    private val log = LogFactory.getLog(javaClass)
+    private var publisher: ApplicationEventPublisher? = null
 
-	override fun setApplicationEventPublisher(p0: ApplicationEventPublisher) {
-		this.publisher = p0
-	}
+    override fun setApplicationEventPublisher(p0: ApplicationEventPublisher) {
+        this.publisher = p0
+    }
 
-	override fun run(args: ApplicationArguments) {
-		val twisTag = "twis"
-		val vmwareTags = listOf("vmware", twisTag)
-		mapOf(
+    override fun run(args: ApplicationArguments) {
+        val twisTag = "twis"
+        val vmwareTags = listOf("vmware", twisTag)
+        mapOf(
 //				"https://blogs.vmware.com/all-vmware-blogs/wprss" to vmwareTags,
-				"http://feeds.feedburner.com/vmware/vmworld" to vmwareTags,
-				"https://blogs.vmware.com/research/feed/" to vmwareTags,
-				"https://blogs.vmware.com/opensource/feed/" to vmwareTags,
-				"https://spring.io/blog.atom" to listOf("spring", twisTag),
-				"https://cloudfoundry.org/feed/" to listOf("cloudfoundry", twisTag)
-		)
-				.forEach { (url, tags) ->
-					val urlAsKey = url.filter { it.isLetterOrDigit() }
-					val standardIntegrationFlow = IntegrationFlows
-							.from(Feed.inboundAdapter(UrlResource(url), urlAsKey)) { pollerConfig ->
-								pollerConfig.poller { it.fixedRate(ingestProperties.pollRateInSeconds * 1000) }
-							}
-							.handle(GenericHandler<SyndEntry> { syndEntry, _ ->
-								processSyndEntry(syndEntry, tags)
-								null
-							})
-							.get()
-					ifc.registration(standardIntegrationFlow).id("flowForFeed${urlAsKey}").register()
-				}
-	}
+                "http://feeds.feedburner.com/vmware/vmworld" to vmwareTags,
+                "https://blogs.vmware.com/research/feed/" to vmwareTags,
+                "https://blogs.vmware.com/opensource/feed/" to vmwareTags,
+                "https://spring.io/blog.atom" to listOf("spring", twisTag),
+                "https://inside.java/feed.xml" to listOf("java", twisTag),
+                "https://cloudfoundry.org/feed/" to listOf("cloudfoundry", twisTag)
+        )
+                .forEach { (url, tags) ->
+                    val urlAsKey = url.filter { it.isLetterOrDigit() }
+                    val standardIntegrationFlow = IntegrationFlows
+                            .from(Feed.inboundAdapter(UrlResource(url), urlAsKey)) { pollerConfig ->
+                                pollerConfig.poller { it.fixedRate(ingestProperties.pollRateInSeconds * 1000) }
+                            }
+                            .handle(GenericHandler<SyndEntry> { syndEntry, _ ->
+                                processSyndEntry(syndEntry, tags)
+                                null
+                            })
+                            .get()
+                    ifc.registration(standardIntegrationFlow).id("flowForFeed${urlAsKey}").register()
+                }
+    }
 
-	fun processSyndEntry(syndEntry: SyndEntry, incomingTags: List<String>) {
-		val tags = incomingTags.map { it.toLowerCase() }
-		val link = syndEntry.link
-		val authors = mutableSetOf<String>()
-				.apply {
-					if (syndEntry.author != null && syndEntry.author.isNotBlank()) {
-						add(syndEntry.author)
-					}
-					if (syndEntry.authors != null && syndEntry.authors.isNotEmpty()) {
-						addAll(syndEntry.authors.map { it.name ?: "" })
-					}
-					filter { it.trim() != "" }
-				}
-		val title = syndEntry.title
-		val date = Date(
-				(syndEntry.updatedDate
-						?: syndEntry.publishedDate
-						?: Date()).time
-		)
-		try {
-			log.info("Processing $link")
-			if (pc.getPosts(url = link).posts.isEmpty()) {
-				val post = pc.addPost(url = link, description = title,
-						tags = tags.toTypedArray(), dt = date, extended = "by ${authors.joinToString(" and ")}",
-						shared = false, toread = false, replace = false)
-				if (post) {
-					log.info("added $link ('$title') to Pinboard @ ${Instant.now().atZone(ZoneId.systemDefault())}")
-				}
-			}
-			this.publisher!!.publishEvent(HeartbeatEvent())
-		} catch (ex: Exception) {
-			log.error("couldn't process $link.", ex)
-		}
-	}
+    private fun processSyndEntry(syndEntry: SyndEntry, incomingTags: List<String>) {
+        val tags = incomingTags.map { it.toLowerCase() }
+        val link = syndEntry.link
+        val authors = mutableSetOf<String>()
+                .apply {
+                    if (syndEntry.author != null && syndEntry.author.isNotBlank()) {
+                        add(syndEntry.author)
+                    }
+                    if (syndEntry.authors != null && syndEntry.authors.isNotEmpty()) {
+                        addAll(syndEntry.authors.map { it.name ?: "" })
+                    }
+                    filter { it.trim() != "" }
+                }
+        val title = syndEntry.title
+        val date = Date(
+                (syndEntry.updatedDate
+                        ?: syndEntry.publishedDate
+                        ?: Date()).time
+        )
+        try {
+            log.info("Processing $link")
+            if (pc.getPosts(url = link).posts.isEmpty()) {
+                val post = pc.addPost(url = link, description = title,
+                        tags = tags.toTypedArray(), dt = date, extended = "by ${authors.joinToString(" and ")}",
+                        shared = false, toread = false, replace = false)
+                if (post) {
+                    log.info("added $link ('$title') to Pinboard @ ${Instant.now().atZone(ZoneId.systemDefault())}")
+                }
+            }
+            this.publisher!!.publishEvent(HeartbeatEvent())
+        } catch (ex: Exception) {
+            log.error("couldn't process $link.", ex)
+        }
+    }
 }
 
 fun main() {
-	runApplication<FeedApplication>()
+    runApplication<FeedApplication>()
 
-	//{
+    //{
 /*		addInitializers(beans {
 			beans {
 				profile("cloud") {
@@ -173,5 +174,5 @@ fun main() {
 				}
 			}
 		})*/
-	//}
+    //}
 }
