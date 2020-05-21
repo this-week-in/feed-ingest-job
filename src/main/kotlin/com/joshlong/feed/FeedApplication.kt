@@ -1,7 +1,5 @@
 package com.joshlong.feed
 
-//import org.springframework.cloud.Cloud
-//import org.springframework.cloud.CloudFactory
 import com.joshlong.jobs.watchdog.HeartbeatEvent
 import com.rometools.rome.feed.synd.SyndEntry
 import org.apache.commons.logging.LogFactory
