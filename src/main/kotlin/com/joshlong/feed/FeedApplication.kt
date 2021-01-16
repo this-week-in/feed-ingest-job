@@ -78,7 +78,6 @@ class IngestProperties(
     val aliasToKeywords: Map<String, MutableList<String>>
 ) {
 
-
     data class Mapping(
         val url: URL,
         val keywords: List<String>
