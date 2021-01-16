@@ -22,6 +22,7 @@ import org.springframework.integration.handler.GenericHandler
 import org.springframework.integration.metadata.MetadataStore
 import org.springframework.stereotype.Component
 import pinboard.PinboardClient
+import java.net.URL
 import java.time.Instant
 import java.time.ZoneId
 import java.util.*
@@ -46,39 +47,65 @@ class FeedApplication {
 
     @Bean(IntegrationContextUtils.METADATA_STORE_BEAN_NAME)
     fun redisMetadataStore(stringRedisTemplate: StringRedisTemplate) =
-            RedisMetadataStore(stringRedisTemplate)
+        RedisMetadataStore(stringRedisTemplate)
 
 }
 
 class RedisMetadataStore(private val stringRedisTemplate: StringRedisTemplate) :
-        MetadataStore {
+    MetadataStore {
 
     override fun put(key: String, value: String) {
         stringRedisTemplate.opsForValue().set(key, value)
     }
 
     override fun remove(key: String): String? =
-            if (stringRedisTemplate.hasKey(key)) {
-                val existingValue = stringRedisTemplate.opsForValue().get(key)
-                stringRedisTemplate.delete(key)
-                existingValue
-            } else null
+        if (stringRedisTemplate.hasKey(key)) {
+            val existingValue = stringRedisTemplate.opsForValue().get(key)
+            stringRedisTemplate.delete(key)
+            existingValue
+        } else null
 
     override fun get(key: String): String? =
-            if (stringRedisTemplate.hasKey(key))
-                stringRedisTemplate.opsForValue().get(key)
-            else null
+        if (stringRedisTemplate.hasKey(key))
+            stringRedisTemplate.opsForValue().get(key)
+        else null
 }
 
 @ConfigurationProperties("ingest")
-class IngestProperties(val pollRateInSeconds: Long = 1)
+class IngestProperties(
+    val pollRateInSeconds: Long = 1,
+    val aliasToUrl: Map<String, String>,
+    val aliasToKeywords: Map<String, MutableList<String>>
+) {
+
+
+    data class Mapping(
+        val url: URL,
+        val keywords: List<String>
+    )
+
+    val mappings: Collection<Mapping>
+        get() {
+            val mappings: MutableList<Mapping> = mutableListOf()
+            for (alias in aliasToKeywords.keys) {
+                val kws = aliasToKeywords.getOrDefault(alias, emptyList<String>())
+                val url = URL(aliasToUrl[alias])
+                val mapping = Mapping(url, kws)
+                mappings.add(mapping)
+            }
+            return mappings
+        }
+
+}
 
 @Component
-class FeedIngestRunner(private val ifc: IntegrationFlowContext,
-                       private val pc: PinboardClient,
-                       private val ingestProperties: IngestProperties) :
-        ApplicationRunner,
-        ApplicationEventPublisherAware {
+class FeedIngestRunner(
+    private val ifc: IntegrationFlowContext,
+    private val pc: PinboardClient,
+    private val ingestProperties: IngestProperties
+) :
+    ApplicationRunner,
+    ApplicationEventPublisherAware {
 
     private val log = LogFactory.getLog(javaClass)
     private var publisher: ApplicationEventPublisher? = null
@@ -88,57 +115,52 @@ class FeedIngestRunner(private val ifc: IntegrationFlowContext,
     }
 
     override fun run(args: ApplicationArguments) {
-        val twisTag = "twis"
-        val vmwareTags = listOf("vmware", twisTag)
-        mapOf(
-//				"https://blogs.vmware.com/all-vmware-blogs/wprss" to vmwareTags,
-                "http://feeds.feedburner.com/vmware/vmworld" to vmwareTags,
-                "https://blogs.vmware.com/research/feed/" to vmwareTags,
-                "https://blogs.vmware.com/opensource/feed/" to vmwareTags,
-                "https://spring.io/blog.atom" to listOf("spring", twisTag),
-                "https://inside.java/feed.xml" to listOf("java", twisTag),
-                "https://cloudfoundry.org/feed/" to listOf("cloudfoundry", twisTag)
-        )
-                .forEach { (url, tags) ->
-                    val urlAsKey = url.filter { it.isLetterOrDigit() }
-                    val standardIntegrationFlow = IntegrationFlows
-                            .from(Feed.inboundAdapter(UrlResource(url), urlAsKey)) { pollerConfig ->
-                                pollerConfig.poller { it.fixedRate(ingestProperties.pollRateInSeconds * 1000) }
-                            }
-                            .handle(GenericHandler<SyndEntry> { syndEntry, _ ->
-                                processSyndEntry(syndEntry, tags)
-                                null
-                            })
-                            .get()
-                    ifc.registration(standardIntegrationFlow).id("flowForFeed${urlAsKey}").register()
-                }
+        this.ingestProperties.mappings
+            .forEach { mapping ->
+                val url = mapping.url.toExternalForm()
+                val urlAsKey = url.filter { it.isLetterOrDigit() }
+                val tags = mapping.keywords
+                log.info("$urlAsKey = $tags")
+                val standardIntegrationFlow = IntegrationFlows
+                    .from(Feed.inboundAdapter(UrlResource(url), urlAsKey)) { pollerConfig ->
+                        pollerConfig.poller { it.fixedRate(this.ingestProperties.pollRateInSeconds * 1000) }
+                    }
+                    .handle(GenericHandler<SyndEntry> { syndEntry, _ ->
+                        processSyndEntry(syndEntry, tags)
+                        null
+                    })
+                    .get()
+                ifc.registration(standardIntegrationFlow).id("flowForFeed${urlAsKey}").register()
+            }
     }
 
     private fun processSyndEntry(syndEntry: SyndEntry, incomingTags: List<String>) {
         val tags = incomingTags.map { it.toLowerCase() }
         val link = syndEntry.link
         val authors = mutableSetOf<String>()
-                .apply {
-                    if (syndEntry.author != null && syndEntry.author.isNotBlank()) {
-                        add(syndEntry.author)
-                    }
-                    if (syndEntry.authors != null && syndEntry.authors.isNotEmpty()) {
-                        addAll(syndEntry.authors.map { it.name ?: "" })
-                    }
-                    filter { it.trim() != "" }
+            .apply {
+                if (syndEntry.author != null && syndEntry.author.isNotBlank()) {
+                    add(syndEntry.author)
                 }
+                if (syndEntry.authors != null && syndEntry.authors.isNotEmpty()) {
+                    addAll(syndEntry.authors.map { it.name ?: "" })
+                }
+                filter { it.trim() != "" }
+            }
         val title = syndEntry.title
         val date = Date(
-                (syndEntry.updatedDate
-                        ?: syndEntry.publishedDate
-                        ?: Date()).time
+            (syndEntry.updatedDate
+                ?: syndEntry.publishedDate
+                ?: Date()).time
         )
         try {
             log.info("Processing $link")
             if (pc.getPosts(url = link).posts.isEmpty()) {
-                val post = pc.addPost(url = link, description = title,
-                        tags = tags.toTypedArray(), dt = date, extended = "by ${authors.joinToString(" and ")}",
-                        shared = false, toread = false, replace = false)
+                val post = pc.addPost(
+                    url = link, description = title,
+                    tags = tags.toTypedArray(), dt = date, extended = "by ${authors.joinToString(" and ")}",
+                    shared = false, toread = false, replace = false
+                )
                 if (post) {
                     log.info("added $link ('$title') to Pinboard @ ${Instant.now().atZone(ZoneId.systemDefault())}")
                 }
@@ -152,25 +174,7 @@ class FeedIngestRunner(private val ifc: IntegrationFlowContext,
 
 fun main() {
     runApplication<FeedApplication>()
-
-    //{
-/*		addInitializers(beans {
-			beans {
-				profile("cloud") {
-					bean {
-						CloudFactory().cloud
-					}
-					bean {
-						ref<Cloud>().getSingletonServiceConnector(RedisConnectionFactory::class.java, null)
-					}
-				}
-				bean {
-					FeedIngestRunner(ref(), ref(), ref())
-				}
-				bean(IntegrationContextUtils.METADATA_STORE_BEAN_NAME) {
-					RedisMetadataStore(ref())
-				}
-			}
-		})*/
-    //}
 }
+
+
+
