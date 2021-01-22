@@ -1,5 +1,7 @@
 package com.joshlong.feed
 
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.joshlong.jobs.watchdog.HeartbeatEvent
 import com.rometools.rome.feed.synd.SyndEntry
 import org.apache.commons.logging.LogFactory
@@ -51,6 +53,7 @@ class FeedApplication {
     fun redisMetadataStore(stringRedisTemplate: StringRedisTemplate) =
         RedisMetadataStore(stringRedisTemplate)
 
+
 }
 
 class RedisMetadataStore(private val stringRedisTemplate: StringRedisTemplate) :
@@ -76,9 +79,8 @@ class RedisMetadataStore(private val stringRedisTemplate: StringRedisTemplate) :
 @ConfigurationProperties("ingest")
 class IngestProperties(
     val pollRateInSeconds: Long = 1,
-    val aliasToUrl: Map<String, String>,
-    val aliasToKeywords: Map<String, MutableList<String>>,
-    val env: Environment
+    var feedMappingsConfig :  String = "{}",
+    val om : ObjectMapper
 ) {
 
     data class Mapping(
@@ -89,35 +91,17 @@ class IngestProperties(
     val mappings: Collection<Mapping>
         get() {
             val mappings: MutableList<Mapping> = mutableListOf()
-            for (alias in aliasToKeywords.keys) {
-                val kws = aliasToKeywords.getOrDefault(alias, emptyList<String>())
-                val url = URL(aliasToUrl[alias])
-                val mapping = Mapping(url, kws)
-                mappings.add(mapping)
-            }
-
-            val slots = mutableMapOf<String, List<String>>()
-            for (slot in 0..100) {
-                val varName = "INGEST_TAGGING_${slot}"
-                if (env.containsProperty(varName)) {
-                    val value = env[varName]!!
-                    val delim = value.indexOf(":")
-                    val tagsString = value.substring(0, delim).trim()
-                    val uri = value.substring(1 + delim).trim()
-                    val parts: List<String> = tagsString.split(",").map { it.trim() }
-                    slots[uri] = parts
+            if (feedMappingsConfig != null) {
+//                println( feedMappingsConfig)
+                val decoded = Base64.getDecoder().decode(feedMappingsConfig)
+                val mappingsMap: Map<String, List<String>> =
+                    om.readValue(decoded, object : TypeReference<Map<String, List<String>>>() {})
+                mappingsMap.forEach { (key, value) ->
+                    mappings.add(Mapping(URL(key), value))
                 }
             }
-
-            slots.forEach { key, kws ->
-                val url = URL(  key )
-                val mapping = Mapping(url, kws)
-                mappings.add(mapping)
-            }
-
             return mappings
         }
-
 }
 
 @Component
