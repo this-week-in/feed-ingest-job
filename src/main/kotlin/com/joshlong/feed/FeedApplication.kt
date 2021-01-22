@@ -12,6 +12,8 @@ import org.springframework.boot.runApplication
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.context.ApplicationEventPublisherAware
 import org.springframework.context.annotation.Bean
+import org.springframework.core.env.Environment
+import org.springframework.core.env.get
 import org.springframework.core.io.UrlResource
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.integration.context.IntegrationContextUtils
@@ -75,7 +77,8 @@ class RedisMetadataStore(private val stringRedisTemplate: StringRedisTemplate) :
 class IngestProperties(
     val pollRateInSeconds: Long = 1,
     val aliasToUrl: Map<String, String>,
-    val aliasToKeywords: Map<String, MutableList<String>>
+    val aliasToKeywords: Map<String, MutableList<String>>,
+    val env: Environment
 ) {
 
     data class Mapping(
@@ -92,6 +95,26 @@ class IngestProperties(
                 val mapping = Mapping(url, kws)
                 mappings.add(mapping)
             }
+
+            val slots = mutableMapOf<String, List<String>>()
+            for (slot in 0..100) {
+                val varName = "INGEST_TAGGING_${slot}"
+                if (env.containsProperty(varName)) {
+                    val value = env[varName]!!
+                    val delim = value.indexOf(":")
+                    val tagsString = value.substring(0, delim).trim()
+                    val uri = value.substring(1 + delim).trim()
+                    val parts: List<String> = tagsString.split(",").map { it.trim() }
+                    slots[uri] = parts
+                }
+            }
+
+            slots.forEach { key, kws ->
+                val url = URL(  key )
+                val mapping = Mapping(url, kws)
+                mappings.add(mapping)
+            }
+
             return mappings
         }
 
