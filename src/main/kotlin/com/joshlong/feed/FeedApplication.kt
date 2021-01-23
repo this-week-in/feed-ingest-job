@@ -80,15 +80,15 @@ class RedisMetadataStore(private val stringRedisTemplate: StringRedisTemplate) :
 @ConfigurationProperties("ingest.feed")
 class IngestProperties(
     val pollRateInSeconds: Long = 1,
-    var mappingsConfig: String? = null,
+    var encodedMappingConfiguration: String? = null,
     val om: ObjectMapper
 ) {
 
 
     val mappings: Map<URL, Collection<String>>
         get() {
-            if (this.mappingsConfig != null) {
-                val decoded = Base64.getDecoder().decode(this.mappingsConfig)
+            if (this.encodedMappingConfiguration != null) {
+                val decoded = Base64.getDecoder().decode(this.encodedMappingConfiguration)
                 val mappingsMap: Map<String, List<String>> =
                     om.readValue(decoded, object : TypeReference<Map<String, List<String>>>() {})
                 return mappingsMap.mapKeys { e -> URL(e.key) }
