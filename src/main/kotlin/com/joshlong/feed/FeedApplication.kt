@@ -30,6 +30,7 @@ import java.net.URL
 import java.time.Instant
 import java.time.ZoneId
 import java.util.*
+import javax.annotation.PostConstruct
 
 /**
  * Monitors a collection of RSS or ATOM feeds and synchronizes them into a Pinboard account.
@@ -76,18 +77,18 @@ class RedisMetadataStore(private val stringRedisTemplate: StringRedisTemplate) :
         else null
 }
 
-@ConfigurationProperties("ingest")
+@ConfigurationProperties("ingest.feed")
 class IngestProperties(
     val pollRateInSeconds: Long = 1,
-    var feedMappingsConfig: String? = null,
+    var mappingsConfig: String? = null,
     val om: ObjectMapper
 ) {
 
 
     val mappings: Map<URL, Collection<String>>
         get() {
-            if (feedMappingsConfig != null) {
-                val decoded = Base64.getDecoder().decode(feedMappingsConfig)
+            if (this.mappingsConfig != null) {
+                val decoded = Base64.getDecoder().decode(this.mappingsConfig)
                 val mappingsMap: Map<String, List<String>> =
                     om.readValue(decoded, object : TypeReference<Map<String, List<String>>>() {})
                 return mappingsMap.mapKeys { e -> URL(e.key) }
@@ -96,20 +97,10 @@ class IngestProperties(
             return mutableMapOf()
         }
 
-/*    val mappings: Collection<Mapping>
-        get() {
-            val mappings: MutableList<Mapping> = mutableListOf()
-            if (feedMappingsConfig != null) {
-//                println( feedMappingsConfig)
-                val decoded = Base64.getDecoder().decode(feedMappingsConfig)
-                val mappingsMap: Map<String, List<String>> =
-                    om.readValue(decoded, object : TypeReference<Map<String, List<String>>>() {})
-                mappingsMap.forEach { (key, value) ->
-                    mappings.add(Mapping(URL(key), value))
-                }
-            }
-            return mappings
-        }*/
+    @PostConstruct
+    fun init() {
+        println(this.mappings)
+    }
 }
 
 @Component
