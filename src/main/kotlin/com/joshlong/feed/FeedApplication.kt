@@ -79,16 +79,24 @@ class RedisMetadataStore(private val stringRedisTemplate: StringRedisTemplate) :
 @ConfigurationProperties("ingest")
 class IngestProperties(
     val pollRateInSeconds: Long = 1,
-    var feedMappingsConfig :  String = "{}",
-    val om : ObjectMapper
+    var feedMappingsConfig: String? = null,
+    val om: ObjectMapper
 ) {
 
-    data class Mapping(
-        val url: URL,
-        val keywords: List<String>
-    )
 
-    val mappings: Collection<Mapping>
+    val mappings: Map<URL, Collection<String>>
+        get() {
+            if (feedMappingsConfig != null) {
+                val decoded = Base64.getDecoder().decode(feedMappingsConfig)
+                val mappingsMap: Map<String, List<String>> =
+                    om.readValue(decoded, object : TypeReference<Map<String, List<String>>>() {})
+                return mappingsMap.mapKeys { e -> URL(e.key) }
+            }
+
+            return mutableMapOf()
+        }
+
+/*    val mappings: Collection<Mapping>
         get() {
             val mappings: MutableList<Mapping> = mutableListOf()
             if (feedMappingsConfig != null) {
@@ -101,7 +109,7 @@ class IngestProperties(
                 }
             }
             return mappings
-        }
+        }*/
 }
 
 @Component
@@ -123,9 +131,9 @@ class FeedIngestRunner(
     override fun run(args: ApplicationArguments) {
         this.ingestProperties.mappings
             .forEach { mapping ->
-                val url = mapping.url.toExternalForm()
+                val url = mapping.key.toExternalForm()
                 val urlAsKey = url.filter { it.isLetterOrDigit() }
-                val tags = mapping.keywords
+                val tags = mapping.value
                 log.info("$urlAsKey = $tags")
                 val standardIntegrationFlow = IntegrationFlows
                     .from(Feed.inboundAdapter(UrlResource(url), urlAsKey)) { pollerConfig ->
@@ -140,7 +148,7 @@ class FeedIngestRunner(
             }
     }
 
-    private fun processSyndEntry(syndEntry: SyndEntry, incomingTags: List<String>) {
+    private fun processSyndEntry(syndEntry: SyndEntry, incomingTags: Collection<String>) {
         val tags = incomingTags.map { it.toLowerCase() }
         val link = syndEntry.link
         val authors = mutableSetOf<String>()
