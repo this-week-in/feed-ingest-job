@@ -84,7 +84,6 @@ class IngestProperties(
     val om: ObjectMapper
 ) {
 
-
     val mappings: Map<URL, Collection<String>>
         get() {
             if (this.encodedMappingConfiguration != null) {
